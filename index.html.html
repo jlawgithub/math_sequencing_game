@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>排列規律互動遊戲 - 20題</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Canvas Confetti 慶祝特效 -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        /* 視覺黑白化濾鏡，模擬練習簿列印效果 */
+        .grayscale-icon {
+            filter: grayscale(100%) contrast(140%);
+        }
+        
+        /* 確保題目序列絕不折行 */
+        .sequence-track {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            overflow-x: auto;
+        }
+
+        /* 隱藏滾動條 */
+        .sequence-track::-webkit-scrollbar {
+            display: none;
+        }
+        .sequence-track {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        /* 五角星彈跳動畫 */
+        @keyframes starPop {
+            0% { transform: scale(0.5); opacity: 0; }
+            70% { transform: scale(1.3); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-star {
+            animation: starPop 0.4s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen flex flex-col items-center justify-between p-4 font-sans select-none">
+
+    <!-- 頂部資訊欄 -->
+    <header class="w-full max-w-4xl bg-white rounded-2xl shadow-md p-4 mb-4 flex justify-between items-center border border-slate-200">
+        <div>
+            <h1 class="text-xl md:text-2xl font-bold text-slate-800">排列規律 (Sequencing)</h1>
+            <p class="text-sm text-slate-500">觀察圖案規律，選出正確答案</p>
+        </div>
+        <div class="flex items-center space-x-4">
+            <!-- 進度顯示 -->
+            <div class="text-right">
+                <span class="text-xs text-slate-400 font-bold block">進度</span>
+                <span id="progress-text" class="text-lg font-bold text-indigo-600">1 / 20</span>
+            </div>
+            <!-- 累積星星 -->
+            <div class="bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 flex items-center space-x-1 shadow-sm">
+                <span class="text-2xl">⭐</span>
+                <span id="star-count" class="text-xl font-black text-amber-600">0</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主遊戲區域 -->
+    <main class="w-full max-w-4xl bg-white rounded-3xl shadow-xl p-6 md:p-10 flex-1 flex flex-col justify-between border border-slate-200 min-h-[420px]">
+        
+        <!-- 題目進度條 -->
+        <div class="w-full bg-slate-100 rounded-full h-2.5 mb-6 overflow-hidden">
+            <div id="progress-bar" class="bg-indigo-600 h-2.5 rounded-full transition-all duration-300" style="width: 5%"></div>
+        </div>
+
+        <!-- 題目展示區（嚴格單行） -->
+        <div class="my-auto py-6">
+            <div id="sequence-container" class="sequence-track space-x-2 md:space-x-4">
+                <!-- 動態生成題目內容 -->
+            </div>
+        </div>
+
+        <!-- 下方選項區 -->
+        <div class="mt-6">
+            <p class="text-center text-slate-500 text-sm mb-4 font-medium">請點擊正確的圖案補全序列：</p>
+            <div id="options-container" class="flex justify-center items-center gap-4 md:gap-8 flex-wrap">
+                <!-- 動態生成選項按鈕 -->
+            </div>
+        </div>
+
+    </main>
+
+    <!-- 底部說明 -->
+    <footer class="mt-4 text-xs text-slate-400 text-center">
+        互動練習模擬器 · 支援自動洗牌與掌聲反饋
+    </footer>
+
+    <!-- 完成結算 Modal 彈窗 -->
+    <div id="result-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center hidden z-50 p-4">
+        <div class="bg-white rounded-3xl p-8 max-w-md w-full text-center shadow-2xl transform transition-all scale-95 border border-slate-100">
+            <div class="text-6xl mb-3">🏆</div>
+            <h2 class="text-2xl font-bold text-slate-800 mb-1">太棒了！完成挑戰！</h2>
+            <p class="text-slate-500 text-sm mb-6">你完成了所有的排列規律題目</p>
+
+            <div class="bg-slate-50 rounded-2xl p-4 mb-6 border border-slate-100 flex justify-around">
+                <div>
+                    <span class="text-xs text-slate-400 block font-semibold">答對題數</span>
+                    <span id="final-score" class="text-2xl font-black text-indigo-600">20 / 20</span>
+                </div>
+                <div>
+                    <span class="text-xs text-slate-400 block font-semibold">獲得星星</span>
+                    <span id="final-stars" class="text-2xl font-black text-amber-500">⭐ 20</span>
+                </div>
+            </div>
+
+            <button onclick="restartGame()" class="w-full bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold py-3.5 px-6 rounded-2xl shadow-lg shadow-indigo-200 transition">
+                再玩一次
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Raw Item Master List (不同種類圖案池)
+        const categories = [
+            ['🧊', '🛋️', '🌀', '💡', '📺'], // 家電家具
+            ['👨', '👩', '👧', '👶', '👴'], // 家庭成員
+            ['🍎', '🍌', '🍇', '🍊', '🍉'], // 水果
+            ['🐶', '🐱', '🐰', '🦊', '🐻'], // 動物
+            ['🚗', '🚀', '⛵', '🚁', '🚲'], // 交通工具
+            ['🍔', '🍕', '🍦', '🍩', '🍟'], // 食物
+            ['⚽', '🏀', '🎾', '🏐', '🎱'], // 運動
+            ['⭐', '🌙', '☀️', '☁️', '🌧️'], // 天氣宇宙
+            ['🔺', '🟦', '🟡', '🟩', '🟣'], // 形狀
+            ['🐟', '🐙', '🦀', '🐬', '海']  // 海洋 (用 emoji 代替)
+        ];
+
+        // 產生 20 道不同類別與長度結構的原始題目樣板
+        const baseQuestionsTemplates = [
+            { catIndex: 0, patternLength: 3, repeat: 3, blankIndex: 8 }, // ABC ABC ABC (9 items)
+            { catIndex: 1, patternLength: 4, repeat: 2, blankIndex: 7 }, // ABCD ABCD (8 items)
+            { catIndex: 2, patternLength: 3, repeat: 3, blankIndex: 4 }, // ABC A[B]C ABC (9 items, middle blank)
+            { catIndex: 3, patternLength: 5, repeat: 2, blankIndex: 9 }, // ABCDE ABCDE (10 items)
+            { catIndex: 4, patternLength: 4, repeat: 2, blankIndex: 5 }, // ABCD A[B]CD (8 items)
+            { catIndex: 5, patternLength: 3, repeat: 2, blankIndex: 5 }, // ABC ABC (6 items)
+            { catIndex: 6, patternLength: 4, repeat: 2, blankIndex: 3 }, // ABC[D] ABCD (8 items)
+            { catIndex: 7, patternLength: 3, repeat: 3, blankIndex: 7 }, // ABC ABC A[B]C (9 items)
+            { catIndex: 8, patternLength: 5, repeat: 2, blankIndex: 4 }, // ABCD[E] ABCDE (10 items)
+            { catIndex: 9, patternLength: 4, repeat: 2, blankIndex: 7 }, // ABCD ABC[D] (8 items)
+            { catIndex: 0, patternLength: 3, repeat: 3, blankIndex: 2 }, // AB[C] ABC ABC (9 items)
+            { catIndex: 1, patternLength: 4, repeat: 2, blankIndex: 6 }, // ABCD AB[C]D (8 items)
+            { catIndex: 2, patternLength: 5, repeat: 2, blankIndex: 9 }, // ABCDE ABCDE (10 items)
+            { catIndex: 3, patternLength: 3, repeat: 2, blankIndex: 5 }, // ABC AB[C] (6 items)
+            { catIndex: 4, patternLength: 4, repeat: 2, blankIndex: 0 }, // [A]BCD ABCD (8 items)
+            { catIndex: 5, patternLength: 3, repeat: 3, blankIndex: 6 }, // ABC ABC [A]BC (9 items)
+            { catIndex: 6, patternLength: 4, repeat: 2, blankIndex: 4 }, // ABCD [A]BCD (8 items)
+            { catIndex: 7, patternLength: 5, repeat: 2, blankIndex: 2 }, // AB[C]DE ABCDE (10 items)
+            { catIndex: 8, patternLength: 3, repeat: 3, blankIndex: 8 }, // ABC ABC AB[C] (9 items)
+            { catIndex: 9, patternLength: 4, repeat: 2, blankIndex: 1 }  // A[B]CD ABCD (8 items)
+        ];
+
+        let questions = [];
+        let currentQuestionIndex = 0;
+        let score = 0;
+        let stars = 0;
+
+        // Fisher-Yates 隨機洗牌函數
+        function shuffleArray(array) {
+            const arr = [...array];
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        // 初始化與打亂題目
+        function initQuestions() {
+            // 洗牌題目順序
+            const shuffledTemplates = shuffleArray(baseQuestionsTemplates);
+
+            questions = shuffledTemplates.map(tpl => {
+                const categoryItems = categories[tpl.catIndex];
+                // 取出該題目所需數量的圖案類別
+                const pattern = categoryItems.slice(0, tpl.patternLength);
+                
+                // 構建完整序列
+                let sequence = [];
+                for (let r = 0; r < tpl.repeat; r++) {
+                    sequence = sequence.concat(pattern);
+                }
+
+                // 計算正確答案
+                const correctAnswer = sequence[tpl.blankIndex];
+
+                // 選項為該模式中的所有元素，並進行【選項打亂】
+                const options = shuffleArray([...pattern]);
+
+                return {
+                    sequence: sequence,
+                    blankIndex: tpl.blankIndex,
+                    correctAnswer: correctAnswer,
+                    options: options
+                };
+            });
+        }
+
+        // 載入當前題目
+        function loadQuestion() {
+            const q = questions[currentQuestionIndex];
+            const sequenceContainer = document.getElementById('sequence-container');
+            const optionsContainer = document.getElementById('options-container');
+
+            // 更新 UI 進度
+            document.getElementById('progress-text').innerText = `${currentQuestionIndex + 1} / ${questions.length}`;
+            document.getElementById('progress-bar').style.width = `${((currentQuestionIndex + 1) / questions.length) * 100}%`;
+
+            // 繪製題目序列（確保單行不換行）
+            sequenceContainer.innerHTML = '';
+            q.sequence.forEach((item, idx) => {
+                const isBlank = (idx === q.blankIndex);
+                const itemEl = document.createElement('div');
+                itemEl.className = 'flex-1 flex justify-center items-center min-w-[36px] max-w-[70px] aspect-square border-2 border-dashed border-slate-300 rounded-xl bg-slate-50/50 p-1';
+
+                if (isBlank) {
+                    itemEl.classList.add('border-indigo-500', 'bg-indigo-50/30', 'ring-2', 'ring-indigo-200');
+                    itemEl.innerHTML = `<span class="text-xl md:text-2xl text-indigo-400 font-bold">?</span>`;
+                } else {
+                    itemEl.innerHTML = `<span class="text-2xl md:text-4xl grayscale-icon select-none">${item}</span>`;
+                }
+                sequenceContainer.appendChild(itemEl);
+            });
+
+            // 繪製打亂後的選項
+            optionsContainer.innerHTML = '';
+            q.options.forEach(option => {
+                const btn = document.createElement('button');
+                btn.className = 'w-16 h-16 md:w-20 md:h-20 bg-white border-2 border-slate-200 rounded-2xl shadow-sm hover:border-indigo-500 hover:shadow-md active:scale-95 transition flex items-center justify-center';
+                btn.innerHTML = `<span class="text-3xl md:text-4xl grayscale-icon select-none">${option}</span>`;
+                btn.onclick = () => checkAnswer(option);
+                optionsContainer.appendChild(btn);
+            });
+        }
+
+        // 檢查答案
+        function checkAnswer(selectedOption) {
+            const q = questions[currentQuestionIndex];
+
+            if (selectedOption === q.correctAnswer) {
+                // 答對處理
+                score++;
+                stars++;
+                document.getElementById('star-count').innerText = stars;
+
+                // 播放掌聲聲效與特效
+                playApplauseSound();
+                triggerConfetti();
+
+                // 前往下一題或結算
+                setTimeout(() => {
+                    currentQuestionIndex++;
+                    if (currentQuestionIndex < questions.length) {
+                        loadQuestion();
+                    } else {
+                        showResults();
+                    }
+                }, 1000);
+            } else {
+                // 答錯輕微震動提示
+                const mainEl = document.querySelector('main');
+                mainEl.classList.add('animate-bounce');
+                setTimeout(() => mainEl.classList.remove('animate-bounce'), 400);
+            }
+        }
+
+        // 五彩紙屑慶祝特效
+        function triggerConfetti() {
+            confetti({
+                particleCount: 50,
+                spread: 60,
+                origin: { y: 0.7 }
+            });
+        }
+
+        // 使用 Web Audio API 原生合成掌聲/歡呼聲 (無需外部音訊檔)
+        function playApplauseSound() {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                const ctx = new AudioContext();
+
+                // 產生掌聲噪聲
+                const bufferSize = ctx.sampleRate * 0.8; // 0.8秒
+                const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+
+                for (let i = 0; i < bufferSize; i++) {
+                    // 模擬拍手的隨機脈衝
+                    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 1.5);
+                }
+
+                const noise = ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                // 帶通濾波器模擬手掌拍擊聲
+                const filter = ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.value = 1000;
+
+                const gain = ctx.createGain();
+                gain.gain.setValueAtTime(1, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.8);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(ctx.destination);
+
+                noise.start();
+            } catch (e) {
+                console.log('Audio Context Error:', e);
+            }
+        }
+
+        // 顯示遊戲結算
+        function showResults() {
+            document.getElementById('final-score').innerText = `${score} / ${questions.length}`;
+            document.getElementById('final-stars').innerText = `⭐ ${stars}`;
+            document.getElementById('result-modal').classList.remove('hidden');
+
+            // 大慶祝特效
+            confetti({
+                particleCount: 150,
+                spread: 100,
+                origin: { y: 0.5 }
+            });
+        }
+
+        // 重新開始遊戲
+        function restartGame() {
+            currentQuestionIndex = 0;
+            score = 0;
+            stars = 0;
+            document.getElementById('star-count').innerText = '0';
+            document.getElementById('result-modal').classList.add('hidden');
+            initQuestions();
+            loadQuestion();
+        }
+
+        // 頁面載入後自動啟動
+        window.onload = () => {
+            initQuestions();
+            loadQuestion();
+        };
+    </script>
+</body>
+</html>
